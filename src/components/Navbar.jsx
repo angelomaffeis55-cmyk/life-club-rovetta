@@ -6,6 +6,7 @@ const LINKS = [
   { label: "Eventi", href: "#eventi" },
   { label: "Il Locale", href: "#locale" },
   { label: "Contatti", href: "#contatti" },
+  { label: "Staff", href: "/scanner" },
   { label: "Instagram", href: "https://www.instagram.com/life.club.rovetta/" },
   { label: "Facebook", href: "https://www.facebook.com/Life.Club.Rovetta/" },
 ];

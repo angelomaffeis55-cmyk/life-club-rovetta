@@ -13,13 +13,11 @@ export default async function(req) {
     }
 
     const base44 = createClientFromRequest(req);
-
     const event = await base44.asServiceRole.entities.Event.get(event_id);
 
-    const code = 'LC-' + Date.now().toString(36).toUpperCase().slice(-5) + '-' + Math.random().toString(36).slice(2, 5).toUpperCase();
-
+    const resCode = 'LC-' + Date.now().toString(36).toUpperCase().slice(-5) + '-' + Math.random().toString(36).slice(2, 5).toUpperCase();
     const unitPrice = Number(event.price) || 0;
-    const qty = Number(quantity);
+    const qty = Math.min(Number(quantity), 10);
     const commissionPerTicket = unitPrice > 0 ? 1 : 0;
     const commission = commissionPerTicket * qty;
     const total = (unitPrice + commissionPerTicket) * qty;
@@ -35,157 +33,156 @@ export default async function(req) {
       unit_price: unitPrice,
       commission,
       total,
-      confirmation_code: code,
+      confirmation_code: resCode,
       status: 'confirmed'
     });
 
-    // QR contenente il codice di conferma
-    const qrDataUrl = await QRCode.toDataURL(code, {
-      margin: 1,
-      width: 300,
-      color: { dark: '#050505', light: '#D4FF00' }
-    });
+    // --- Biglietti singoli: 1 codice QR per biglietto ---
+    const pad = (n) => String(n).padStart(2, '0');
+    const ticketRecords = [];
+    const ticketCodes = [];
+    for (let i = 0; i < qty; i++) {
+      const tCode = resCode + '-' + pad(i + 1);
+      ticketCodes.push(tCode);
+      ticketRecords.push({
+        reservation_id: reservation.id,
+        event_id,
+        event_title: event.title,
+        event_date: event.date,
+        holder_name: full_name,
+        code: tCode,
+        seat: pad(i + 1) + '/' + pad(qty),
+        status: 'valid'
+      });
+    }
+    await base44.asServiceRole.entities.Ticket.bulkCreate(ticketRecords);
 
-    // --- Costruzione PDF: Digital Access Pass ---
+    // --- QR per ogni biglietto ---
+    const qrDataUrls = await Promise.all(
+      ticketCodes.map((c) =>
+        QRCode.toDataURL(c, { margin: 1, width: 300, color: { dark: '#050505', light: '#D4FF00' } })
+      )
+    );
+
+    // --- PDF multi-pagina: 1 pass per biglietto ---
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
+    const eventDate = event.date
+      ? new Date(event.date).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })
+      : '—';
 
-    // Sfondo ossidiana
-    doc.setFillColor(5, 5, 5);
-    doc.rect(0, 0, pageW, pageH, 'F');
+    const drawPass = (qrData, code, seat, isFirst) => {
+      if (!isFirst) doc.addPage();
+      doc.setFillColor(5, 5, 5);
+      doc.rect(0, 0, pageW, pageH, 'F');
+      doc.setFillColor(212, 255, 0);
+      doc.rect(0, 0, pageW, 6, 'F');
 
-    // Barra superiore fosforo acido
-    doc.setFillColor(212, 255, 0);
-    doc.rect(0, 0, pageW, 6, 'F');
-
-    // Branding
-    doc.setTextColor(224, 224, 224);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(30);
-    doc.text('LIFE CLUB', 44, 66);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(46, 91, 255);
-    doc.text('DIGITAL ACCESS PASS  /  ROVETTA (BG)', 44, 80);
-
-    // Titolo evento
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(38);
-    doc.setTextColor(224, 224, 224);
-    const titleLines = doc.splitTextToSize((event.title || 'EVENTO').toUpperCase(), pageW - 220);
-    doc.text(titleLines, 44, 138);
-
-    // Dettagli evento
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-    doc.setTextColor(180, 180, 180);
-    const eventDate = event.date ? new Date(event.date).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }) : '—';
-    doc.text('DATA:  ' + eventDate.toUpperCase(), 44, 188);
-    if (event.end_time) doc.text('INIZIO:  ' + event.end_time, 44, 206);
-    if (event.genre) doc.text('GENERE:  ' + event.genre.toUpperCase(), 44, 206 + (event.end_time ? 18 : 0));
-
-    // Separatore cobalto
-    doc.setDrawColor(46, 91, 255);
-    doc.setLineWidth(1);
-    doc.line(44, 248, pageW - 44, 248);
-
-    // Titolare
-    doc.setFontSize(8);
-    doc.setTextColor(110, 110, 110);
-    doc.text('TITOLARE', 44, 272);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.setTextColor(224, 224, 224);
-    doc.text(full_name, 44, 294);
-
-    // Quantità
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(110, 110, 110);
-    doc.text('BIGLIETTI', 44, 322);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(22);
-    doc.setTextColor(212, 255, 0);
-    doc.text(String(quantity), 44, 348);
-
-    // Codice conferma
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(110, 110, 110);
-    doc.text('CODICE CONFERMA', 44, 384);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
-    doc.setTextColor(212, 255, 0);
-    doc.text(code, 44, 408);
-
-    // Riepilogo prezzi con commissione
-    const py = 444;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(110, 110, 110);
-    doc.text('RIEPILOGO', 44, py);
-    if (unitPrice > 0) {
-      doc.text('BIGLIETTI (' + qty + ' x EUR ' + unitPrice.toFixed(2) + ')', 44, py + 18);
-      doc.text('COMMISSIONE PREVENDITA (' + qty + ' x EUR 1.00)', 44, py + 34);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
       doc.setTextColor(224, 224, 224);
-      doc.text('EUR ' + (unitPrice * qty).toFixed(2), 340, py + 18, { align: 'right' });
-      doc.text('EUR ' + commission.toFixed(2), 340, py + 34, { align: 'right' });
-      doc.setDrawColor(212, 255, 0);
-      doc.setLineWidth(0.8);
-      doc.line(44, py + 44, 340, py + 44);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(30);
+      doc.text('LIFE CLUB', 44, 66);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(46, 91, 255);
+      doc.text('DIGITAL ACCESS PASS  /  ROVETTA (BG)', 44, 80);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(34);
+      doc.setTextColor(224, 224, 224);
+      const titleLines = doc.splitTextToSize((event.title || 'EVENTO').toUpperCase(), pageW - 220);
+      doc.text(titleLines, 44, 130);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(180, 180, 180);
+      doc.text('DATA:  ' + eventDate.toUpperCase(), 44, 178);
+      if (event.end_time) doc.text('INIZIO:  ' + event.end_time, 44, 196);
+      if (event.genre) doc.text('GENERE:  ' + event.genre.toUpperCase(), 44, 196 + (event.end_time ? 18 : 0));
+
+      doc.setDrawColor(46, 91, 255);
+      doc.setLineWidth(1);
+      doc.line(44, 236, pageW - 44, 236);
+
+      doc.setFontSize(8);
+      doc.setTextColor(110, 110, 110);
+      doc.text('TITOLARE', 44, 258);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.setTextColor(224, 224, 224);
+      doc.text(full_name, 44, 280);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(110, 110, 110);
+      doc.text('BIGLIETTO', 44, 306);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(22);
+      doc.setTextColor(212, 255, 0);
+      doc.text(seat, 44, 332);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(110, 110, 110);
+      doc.text('CODICE BIGLIETTO', 44, 366);
+      doc.setFont('helvetica', 'bold');
       doc.setFontSize(16);
       doc.setTextColor(212, 255, 0);
-      doc.text('TOTALE  EUR ' + total.toFixed(2), 44, py + 64);
-    } else {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(14);
-      doc.setTextColor(212, 255, 0);
-      doc.text('INGRESSO LIBERO', 44, py + 22);
+      doc.text(code, 44, 388);
+
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
-      doc.setTextColor(110, 110, 110);
-      doc.text('Nessuna commissione applicata sui biglietti gratuiti', 44, py + 40);
-    }
+      doc.setTextColor(150, 150, 150);
+      const priceLine = unitPrice > 0
+        ? 'Prevendita EUR ' + (unitPrice + commissionPerTicket).toFixed(2) + '  (biglietto + EUR ' + commissionPerTicket.toFixed(2) + ' commissione)'
+        : 'INGRESSO LIBERO';
+      doc.text(priceLine, 44, 416);
 
-    // QR a destra
-    doc.setFillColor(212, 255, 0);
-    doc.roundedRect(pageW - 184, 250, 140, 140, 4, 4, 'F');
-    doc.addImage(qrDataUrl, 'PNG', pageW - 174, 260, 120, 120);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(5, 5, 5);
-    doc.text('SCANNA ALL\'INGRESSO', pageW - 174, 398);
+      doc.setFillColor(212, 255, 0);
+      doc.roundedRect(pageW - 184, 240, 140, 140, 4, 4, 'F');
+      doc.addImage(qrData, 'PNG', pageW - 174, 250, 120, 120);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(5, 5, 5);
+      doc.text("SCANNA ALL'INGRESSO", pageW - 174, 386);
 
-    // Footer
-    doc.setDrawColor(46, 91, 255);
-    doc.setLineWidth(0.5);
-    doc.line(44, pageH - 70, pageW - 44, pageH - 70);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(130, 130, 130);
-    doc.text('Via Vogno, 7 — 24020 Rovetta (BG)   ·   info@lifeclub.it   ·   335 5847474', 44, pageH - 48);
-    doc.text('Documento digitale generato il ' + new Date().toLocaleDateString('it-IT') + '. Presenta il QR all\'ingresso. Non rivendibile.', 44, pageH - 32);
+      doc.setDrawColor(46, 91, 255);
+      doc.setLineWidth(0.5);
+      doc.line(44, pageH - 70, pageW - 44, pageH - 70);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(130, 130, 130);
+      doc.text('Via Vogno, 7 - 24020 Rovetta (BG)   .   info@lifeclub.it   .   335 5847474', 44, pageH - 48);
+      doc.text("Biglietto " + seat + " . Codice conferma " + resCode + " . Presenta il QR all'ingresso. Non rivendibile.", 44, pageH - 32);
+    };
+
+    qrDataUrls.forEach((d, i) => drawPass(d, ticketCodes[i], pad(i + 1) + '/' + pad(qty), i === 0));
 
     const pdfBase64 = doc.output('datauristring').split(',')[1];
 
-    // Email (non bloccante) — solo utenti registrati all'app
     waitUntil((async () => {
       try {
         await base44.asServiceRole.integrations.Core.SendEmail({
           to: email,
-          subject: 'Life Club Rovetta — Conferma prevendita: ' + event.title,
-          body: 'Ciao ' + full_name + ',\n\nLa tua prevendita e\' confermata.\n\nEvento: ' + event.title + '\nData: ' + eventDate + '\nBiglietti: ' + quantity + '\nCodice conferma: ' + code + '\n\nScarica il Digital Access Pass dal sito (QR da presentare all\'ingresso).\n\nA presto,\nLife Club Rovetta'
+          subject: 'Life Club Rovetta - Conferma prevendita: ' + event.title,
+          body:
+            'Ciao ' + full_name + ',\n\n' +
+            'La tua prevendita e confermata. Hai ' + qty + ' biglietto/i, ciascuno con il proprio QR da presentare all\'ingresso.\n\n' +
+            'Evento: ' + event.title + '\n' +
+            'Data: ' + eventDate + '\n' +
+            'Codice conferma: ' + resCode + '\n' +
+            'Codici biglietti: ' + ticketCodes.join(', ') + '\n\n' +
+            'Scarica il Digital Access Pass dal sito (un QR per biglietto).\n\nA presto,\nLife Club Rovetta'
         });
       } catch (e) {
-        // email a indirizzi non registrati non disponibile — ignorato
+        // email a indirizzi non registrati non disponibile
       }
     })());
 
     return Response.json({
-      confirmation_code: code,
+      confirmation_code: resCode,
+      ticket_codes: ticketCodes,
       pdf_base64: pdfBase64,
       reservation_id: reservation.id,
       total,

@@ -1,0 +1,72 @@
+{
+  "name": "Ticket",
+  "type": "object",
+  "properties": {
+    "reservation_id": {
+      "type": "string"
+    },
+    "event_id": {
+      "type": "string"
+    },
+    "event_title": {
+      "type": "string"
+    },
+    "event_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "holder_name": {
+      "type": "string"
+    },
+    "code": {
+      "type": "string"
+    },
+    "seat": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "valid",
+        "checked_in",
+        "cancelled"
+      ],
+      "default": "valid"
+    },
+    "scanned_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scanned_by": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "reservation_id",
+    "event_id",
+    "event_title",
+    "code"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
