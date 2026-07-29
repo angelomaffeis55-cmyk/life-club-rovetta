@@ -1,0 +1,45 @@
+{
+  "name": "Event",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_time": {
+      "type": "string"
+    },
+    "genre": {
+      "type": "string"
+    },
+    "djs": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "price": {
+      "type": "number",
+      "default": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "upcoming",
+        "soldout",
+        "past"
+      ],
+      "default": "upcoming"
+    }
+  },
+  "required": [
+    "title",
+    "date"
+  ]
+}
