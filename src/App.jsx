@@ -8,6 +8,9 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 // Add page imports here
 import Home from './pages/Home';
+import Privacy from './pages/Privacy';
+import Cookie from './pages/Cookie';
+import Termini from './pages/Termini';
 import Scanner from './pages/Scanner';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Login from '@/pages/Login';
@@ -47,6 +50,9 @@ const AuthenticatedApp = () => {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/" element={<Home />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/cookie" element={<Cookie />} />
+      <Route path="/termini" element={<Termini />} />
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login?returnTo=/scanner" replace />} />}>
         <Route path="/scanner" element={<Scanner />} />
       </Route>

@@ -11,6 +11,7 @@ import Footer from "@/components/Footer";
 import Gallery from "@/components/Gallery";
 import Faq from "@/components/Faq";
 import InfoLocale from "@/components/InfoLocale";
+import CookieBanner from "@/components/CookieBanner";
 import { ArrowDown, Zap, Music, Users } from "lucide-react";
 
 const HERO_IMG = "https://media.base44.com/images/public/6a69f1d0870cc40025a6fb1d/89498f885_generated_3a0d2045.png";
@@ -211,6 +212,7 @@ export default function Home() {
       <Footer />
 
       <BookingModal event={booking} onClose={() => setBooking(null)} />
+      <CookieBanner />
     </div>
   );
 }

@@ -75,6 +75,11 @@ export default function Footer() {
 
         <div className="mt-12 pt-6 border-t border-border flex flex-col md:flex-row justify-between gap-3 text-[11px] text-muted-foreground">
           <p>© {new Date().getFullYear()} Life Club Rovetta. Tutti i diritti riservati.</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <a href="/privacy" className="hover:text-foreground transition-colors">Privacy</a>
+            <a href="/cookie" className="hover:text-foreground transition-colors">Cookie</a>
+            <a href="/termini" className="hover:text-foreground transition-colors">Termini biglietti</a>
+          </div>
           <p>Pulse-Driven Brutalism — Designed for the dancefloor.</p>
         </div>
       </div>
