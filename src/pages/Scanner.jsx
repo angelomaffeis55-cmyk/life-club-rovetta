@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
-import { ScanLine, CheckCircle2, XCircle, AlertTriangle, Camera, Keyboard, RefreshCw, LogOut } from "lucide-react";
+import { ScanLine, CheckCircle2, XCircle, AlertTriangle, Camera, Keyboard, RefreshCw, LogOut, Users, Search } from "lucide-react";
 
 export default function Scanner() {
   const { user } = useAuth();
@@ -20,6 +20,10 @@ export default function Scanner() {
 
   const [mode, setMode] = useState("camera"); // 'camera' | 'manual'
   const [camStarted, setCamStarted] = useState(false);
+  const [view, setView] = useState("scan"); // 'scan' | 'list'
+  const [reservations, setReservations] = useState([]);
+  const [resLoading, setResLoading] = useState(false);
+  const [query, setQuery] = useState("");
   const [camError, setCamError] = useState(false);
   const videoRef = useRef(null);
   const lastScanRef = useRef("");
@@ -66,8 +70,22 @@ export default function Scanner() {
     }
   }, [eventId]);
 
+  const loadReservations = useCallback(async () => {
+    if (!eventId) return;
+    setResLoading(true);
+    try {
+      const list = await base44.entities.Reservation.filter({ event_id: eventId });
+      setReservations(list || []);
+    } catch (e) {
+      setReservations([]);
+    } finally {
+      setResLoading(false);
+    }
+  }, [eventId]);
+
   useEffect(() => { loadEvents(); }, [loadEvents]);
   useEffect(() => { if (eventId) loadTickets(); }, [eventId, loadTickets]);
+  useEffect(() => { if (eventId) loadReservations(); }, [eventId, loadReservations]);
 
   // Sincronizzazione real-time: ogni nuova prenotazione crea un Ticket,
   // e ogni timbrata aggiorna lo stato. Lo scanner reagisce all'istante,
@@ -188,6 +206,12 @@ export default function Scanner() {
     valid: tickets.filter((t) => t.status === "valid").length,
   };
   const pct = stats.total ? Math.round((stats.in / stats.total) * 100) : 0;
+  const totalTickets = reservations.reduce((s, r) => s + (r.quantity || 0), 0);
+  const filteredRes = reservations.filter((r) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (r.full_name || "").toLowerCase().includes(q) || (r.email || "").toLowerCase().includes(q) || (r.confirmation_code || "").toLowerCase().includes(q);
+  });
 
   if (!isAdmin) {
     return (
@@ -227,6 +251,79 @@ export default function Scanner() {
       <div className="max-w-5xl mx-auto px-5 md:px-8 py-6 grid md:grid-cols-[1fr_320px] gap-6">
         {/* Colonna scanner */}
         <div>
+          <div className="flex items-center gap-2 mb-4">
+            <button onClick={() => setView("scan")} className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.15em] border ${view === "scan" ? "bg-accent text-background border-accent" : "border-border text-muted-foreground hover:text-foreground"}`}>
+              <ScanLine className="h-4 w-4" /> Valida
+            </button>
+            <button onClick={() => setView("list")} className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.15em] border ${view === "list" ? "bg-accent text-background border-accent" : "border-border text-muted-foreground hover:text-foreground"}`}>
+              <Users className="h-4 w-4" /> Lista prenotati
+            </button>
+          </div>
+
+          {view === "list" ? (
+            <div>
+              <div className="relative mb-4">
+                <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cerca per nome, email o codice" className="w-full bg-card border border-border pl-9 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent" />
+              </div>
+
+              {resLoading ? (
+                <p className="text-sm text-muted-foreground">Carico la lista prenotazioni...</p>
+              ) : filteredRes.length === 0 ? (
+                <div className="border border-border p-6 text-center">
+                  <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">{reservations.length === 0 ? "Nessuna prenotazione per questo evento." : "Nessuna corrispondenza alla ricerca."}</p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-2 mb-4 text-center">
+                    <div className="border border-border p-2">
+                      <p className="text-xl font-bold text-foreground">{filteredRes.length}</p>
+                      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Prenotazioni</p>
+                    </div>
+                    <div className="border border-border p-2">
+                      <p className="text-xl font-bold text-foreground">{totalTickets}</p>
+                      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Biglietti</p>
+                    </div>
+                    <div className="border border-border p-2">
+                      <p className="text-xl font-bold text-accent">{stats.in}</p>
+                      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Entrati</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2 max-h-[58vh] overflow-y-auto pr-1">
+                    {filteredRes.map((r) => {
+                      const inCount = tickets.filter((t) => t.reservation_id === r.id && t.status === "checked_in").length;
+                      const done = inCount === (r.quantity || 0);
+                      return (
+                        <div key={r.id} className="border border-border p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-foreground truncate">{r.full_name}</p>
+                              <p className="text-xs text-muted-foreground truncate">{r.email}</p>
+                              {r.phone && <p className="text-xs text-muted-foreground truncate">{r.phone}</p>}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-xs text-foreground font-mono">{r.confirmation_code}</p>
+                              <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-0.5">
+                                {r.status === "cancelled" ? "Annullata" : r.status === "checked_in" ? "Completata" : "Confermata"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
+                            <span className="text-xs text-muted-foreground">{r.quantity} biglietti{r.unit_price ? ` · €${(r.total || 0).toFixed(2)}` : ""}</span>
+                            <span className={`text-xs font-bold ${done ? "text-accent" : inCount > 0 ? "text-foreground" : "text-muted-foreground"}`}>
+                              {inCount}/{r.quantity} entrati
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
           <div className="flex items-center gap-2 mb-4">
             <button onClick={() => { setMode("camera"); setCamStarted(false); }} className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.15em] border ${mode === "camera" ? "bg-accent text-background border-accent" : "border-border text-muted-foreground hover:text-foreground"}`}>
               <Camera className="h-4 w-4" /> Fotocamera
@@ -332,6 +429,8 @@ export default function Scanner() {
               </motion.div>
             )}
           </AnimatePresence>
+            </>
+          )}
         </div>
 
         {/* Colonna stats */}
