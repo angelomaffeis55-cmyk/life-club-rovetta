@@ -118,10 +118,11 @@ export default function Scanner() {
     let active = true;
     let stream;
     let raf;
+    let timer;
     if (mode !== "camera" || !camStarted) return;
     (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } });
         if (!active) return;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -137,31 +138,36 @@ export default function Scanner() {
         }
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        const MAX = 480;
         const tick = async () => {
           if (!active || !videoRef.current) return;
           const v = videoRef.current;
-          if (v.readyState >= 2 && v.videoWidth) {
-            if (detector) {
-              try {
-                const codes = await detector.detect(v);
-                if (codes && codes.length) {
-                  const val = codes[0].rawValue?.trim();
-                  if (val && val.toUpperCase() !== lastScanRef.current) processCode(val);
-                }
-              } catch (e) {}
-            } else if (jsQR) {
-              canvas.width = v.videoWidth;
-              canvas.height = v.videoHeight;
-              ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-              const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              const q = jsQR(img.data, canvas.width, canvas.height);
-              if (q && q.data) {
-                const val = q.data.trim();
-                if (val.toUpperCase() !== lastScanRef.current) processCode(val);
-              }
-            }
+          if (v.readyState < 2 || !v.videoWidth) {
+            raf = requestAnimationFrame(tick);
+            return;
           }
-          raf = requestAnimationFrame(tick);
+          if (detector) {
+            try {
+              const codes = await detector.detect(v);
+              if (codes && codes.length) {
+                const val = codes[0].rawValue?.trim();
+                if (val && val.toUpperCase() !== lastScanRef.current) processCode(val);
+              }
+            } catch (e) {}
+            raf = requestAnimationFrame(tick);
+          } else if (jsQR) {
+            const scale = Math.min(1, MAX / Math.max(v.videoWidth, v.videoHeight));
+            canvas.width = Math.max(1, Math.round(v.videoWidth * scale));
+            canvas.height = Math.max(1, Math.round(v.videoHeight * scale));
+            ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const q = jsQR(img.data, canvas.width, canvas.height);
+            if (q && q.data) {
+              const val = q.data.trim();
+              if (val.toUpperCase() !== lastScanRef.current) processCode(val);
+            }
+            timer = setTimeout(tick, 90);
+          }
         };
         tick();
       } catch (e) {
@@ -171,6 +177,7 @@ export default function Scanner() {
     return () => {
       active = false;
       if (raf) cancelAnimationFrame(raf);
+      if (timer) clearTimeout(timer);
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
   }, [mode, camStarted, processCode]);
