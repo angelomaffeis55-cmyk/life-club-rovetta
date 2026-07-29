@@ -19,6 +19,7 @@ export default function Scanner() {
   const [processing, setProcessing] = useState(false);
 
   const [mode, setMode] = useState("camera"); // 'camera' | 'manual'
+  const [camStarted, setCamStarted] = useState(false);
   const [camError, setCamError] = useState(false);
   const videoRef = useRef(null);
   const lastScanRef = useRef("");
@@ -117,7 +118,7 @@ export default function Scanner() {
     let active = true;
     let stream;
     let raf;
-    if (mode !== "camera") return;
+    if (mode !== "camera" || !camStarted) return;
     if (!("BarcodeDetector" in window)) { setCamError(true); return; }
     (async () => {
       try {
@@ -149,7 +150,7 @@ export default function Scanner() {
       if (raf) cancelAnimationFrame(raf);
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
-  }, [mode, processCode]);
+  }, [mode, camStarted, processCode]);
 
   const stats = {
     total: tickets.length,
@@ -181,8 +182,8 @@ export default function Scanner() {
         <div className="flex items-center gap-3">
           <ScanLine className="h-5 w-5 text-accent" />
           <div>
-            <h1 className="text-sm font-black uppercase tracking-[0.2em]">Staff Scanner</h1>
-            <p className="text-[10px] text-muted-foreground tracking-wider">Validazione biglietti - Life Club Rovetta</p>
+            <h1 className="text-base font-black uppercase tracking-[0.2em]">Staff Scanner</h1>
+            <p className="text-xs text-muted-foreground tracking-wider">Validazione biglietti - Life Club Rovetta</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -197,10 +198,10 @@ export default function Scanner() {
         {/* Colonna scanner */}
         <div>
           <div className="flex items-center gap-2 mb-4">
-            <button onClick={() => setMode("camera")} className={`flex items-center gap-2 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.15em] border ${mode === "camera" ? "bg-accent text-background border-accent" : "border-border text-muted-foreground hover:text-foreground"}`}>
+            <button onClick={() => { setMode("camera"); setCamStarted(false); }} className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.15em] border ${mode === "camera" ? "bg-accent text-background border-accent" : "border-border text-muted-foreground hover:text-foreground"}`}>
               <Camera className="h-4 w-4" /> Fotocamera
             </button>
-            <button onClick={() => setMode("manual")} className={`flex items-center gap-2 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.15em] border ${mode === "manual" ? "bg-accent text-background border-accent" : "border-border text-muted-foreground hover:text-foreground"}`}>
+            <button onClick={() => { setMode("manual"); setCamStarted(false); }} className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.15em] border ${mode === "manual" ? "bg-accent text-background border-accent" : "border-border text-muted-foreground hover:text-foreground"}`}>
               <Keyboard className="h-4 w-4" /> Manuale
             </button>
           </div>
@@ -208,18 +209,36 @@ export default function Scanner() {
           {mode === "camera" ? (
             <div className="relative aspect-square md:aspect-video border-2 border-border bg-black overflow-hidden">
               <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-2/3 h-2/3 border-2 border-accent/80 relative">
-                  <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-accent" />
-                  <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-accent" />
-                  <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-accent" />
-                  <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-accent" />
+              <div className="absolute inset-6 pointer-events-none">
+                <div className="relative w-full h-full">
+                  <div className="absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 border-accent" />
+                  <div className="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-accent" />
+                  <div className="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-accent" />
+                  <div className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-accent" />
                 </div>
               </div>
+
+              {!camStarted && !camError && (
+                <div className="absolute inset-0 bg-background/85 flex flex-col items-center justify-center text-center px-6 gap-4">
+                  <Camera className="h-10 w-10 text-accent" />
+                  <p className="text-sm text-foreground">Inquadra il QR sul biglietto PDF per validarlo all'ingresso.</p>
+                  <button onClick={() => setCamStarted(true)} className="inline-flex items-center gap-2 bg-accent text-background px-6 py-3 text-sm font-bold uppercase tracking-[0.15em] hover:bg-foreground transition-colors">
+                    <Camera className="h-4 w-4" /> Avvia fotocamera
+                  </button>
+                </div>
+              )}
+
+              {camStarted && !camError && (
+                <button onClick={() => setCamStarted(false)} className="absolute top-3 right-3 inline-flex items-center gap-1 bg-background/80 text-foreground px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] border border-border hover:border-accent">
+                  <RefreshCw className="h-3.5 w-3.5" /> Stop
+                </button>
+              )}
+
               {camError && (
                 <div className="absolute inset-0 bg-background/90 flex flex-col items-center justify-center text-center px-6">
-                  <Camera className="h-8 w-8 text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">Fotocamera non disponibile su questo dispositivo. Usa l'inserimento manuale.</p>
+                  <Camera className="h-9 w-9 text-muted-foreground mb-3" />
+                  <p className="text-sm text-foreground mb-1">Fotocamera o scanner QR non supportati su questo dispositivo.</p>
+                  <p className="text-xs text-muted-foreground">Usa l'inserimento manuale per digitare il codice del biglietto.</p>
                 </div>
               )}
             </div>
@@ -232,7 +251,7 @@ export default function Scanner() {
                 autoFocus
                 className="w-full bg-card border border-border px-4 py-4 text-lg font-mono uppercase tracking-wider text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent"
               />
-              <button type="submit" disabled={processing || !code} className="w-full bg-accent text-background py-4 text-xs font-bold uppercase tracking-[0.2em] hover:bg-foreground transition-colors disabled:opacity-40">
+              <button type="submit" disabled={processing || !code} className="w-full bg-accent text-background py-4 text-sm font-bold uppercase tracking-[0.2em] hover:bg-foreground transition-colors disabled:opacity-40">
                 {processing ? "Verifica..." : "Valida biglietto"}
               </button>
             </form>
@@ -288,7 +307,7 @@ export default function Scanner() {
         {/* Colonna stats */}
         <aside className="space-y-5">
           <div className="border border-border p-5">
-            <label className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Evento</label>
+            <label className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Evento</label>
             <select
               value={eventId}
               onChange={(e) => setEventId(e.target.value)}
@@ -301,14 +320,14 @@ export default function Scanner() {
 
           <div className="border border-border p-5">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Conteggio ingressi</span>
+              <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Conteggio ingressi</span>
               <button onClick={loadTickets} className="text-muted-foreground hover:text-accent transition-colors">
                 <RefreshCw className={`h-4 w-4 ${loadingTickets ? "animate-spin" : ""}`} />
               </button>
             </div>
             <div className="flex items-end gap-2">
-              <span className="text-4xl font-black text-accent leading-none">{stats.in}</span>
-              <span className="text-sm text-muted-foreground pb-1">/ {stats.total}</span>
+              <span className="text-5xl font-black text-accent leading-none">{stats.in}</span>
+              <span className="text-base text-muted-foreground pb-1">/ {stats.total}</span>
             </div>
             <div className="mt-3 h-2 bg-secondary">
               <div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
@@ -316,25 +335,25 @@ export default function Scanner() {
             <div className="grid grid-cols-2 gap-2 mt-4 text-center">
               <div className="border border-border p-2">
                 <p className="text-xl font-bold text-foreground">{stats.valid}</p>
-                <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Da entrare</p>
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Da entrare</p>
               </div>
               <div className="border border-border p-2">
                 <p className="text-xl font-bold text-foreground">{stats.in}</p>
-                <p className="text-[9px] uppercase tracking-wider text-muted-foreground">Entrati</p>
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Entrati</p>
               </div>
             </div>
           </div>
 
           <div className="border border-border p-5">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-2">Ultimi ingressi</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">Ultimi ingressi</p>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {tickets.filter((t) => t.status === "checked_in").sort((a, b) => (b.scanned_at || "").localeCompare(a.scanned_at || "")).slice(0, 8).map((t) => (
-                <div key={t.id} className="flex items-center justify-between text-xs">
+                <div key={t.id} className="flex items-center justify-between text-sm">
                   <div className="min-w-0">
                     <p className="text-foreground truncate">{t.holder_name}</p>
-                    <p className="text-muted-foreground">N.{t.seat} · {t.code}</p>
+                    <p className="text-muted-foreground text-xs">N.{t.seat} · {t.code}</p>
                   </div>
-                  <span className="text-muted-foreground shrink-0 ml-2">{t.scanned_at ? new Date(t.scanned_at).toLocaleTimeString("it-IT") : ""}</span>
+                  <span className="text-muted-foreground shrink-0 ml-2 text-xs">{t.scanned_at ? new Date(t.scanned_at).toLocaleTimeString("it-IT") : ""}</span>
                 </div>
               ))}
               {stats.in === 0 && <p className="text-xs text-muted-foreground">Nessun ingresso ancora registrato.</p>}
