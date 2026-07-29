@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
-import { ScanLine, CheckCircle2, XCircle, AlertTriangle, Camera, Keyboard, RefreshCw, LogOut, Users, Search } from "lucide-react";
+import { ScanLine, CheckCircle2, XCircle, AlertTriangle, Camera, Keyboard, RefreshCw, LogOut, Users, Search, Lock, Unlock } from "lucide-react";
 
 export default function Scanner() {
   const { user } = useAuth();
@@ -25,8 +25,10 @@ export default function Scanner() {
   const [resLoading, setResLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [camError, setCamError] = useState(false);
+  const [closingEvent, setClosingEvent] = useState(false);
   const videoRef = useRef(null);
   const lastScanRef = useRef("");
+  const concludedRef = useRef(false);
 
   const beep = (ok) => {
     try {
@@ -113,6 +115,12 @@ export default function Scanner() {
   const processCode = useCallback(async (raw) => {
     const c = (raw || "").trim().toUpperCase();
     if (!c || c === lastScanRef.current || processing || !eventId) return;
+    if (concludedRef.current) {
+      setResult({ valid: false, reason: "closed" });
+      beep(false);
+      setTimeout(() => setResult(null), 4000);
+      return;
+    }
     lastScanRef.current = c;
     setProcessing(true);
     setCode(c);
@@ -206,6 +214,36 @@ export default function Scanner() {
     valid: tickets.filter((t) => t.status === "valid").length,
   };
   const pct = stats.total ? Math.round((stats.in / stats.total) * 100) : 0;
+  const selectedEvent = events.find((e) => e.id === eventId);
+  const isConcluded = selectedEvent?.status === "past";
+  useEffect(() => { concludedRef.current = isConcluded; }, [isConcluded]);
+
+  const closeEvent = async () => {
+    if (!eventId) return;
+    if (!window.confirm("Concludere la serata? Le timbrature verranno bloccate e l'evento archiviato come passato.")) return;
+    setClosingEvent(true);
+    try {
+      await base44.entities.Event.update(eventId, { status: "past" });
+      setEvents((prev) => prev.map((e) => (e.id === eventId ? { ...e, status: "past" } : e)));
+    } catch (e) {
+      alert("Impossibile chiudere la serata: " + (e?.message || "errore"));
+    } finally {
+      setClosingEvent(false);
+    }
+  };
+  const reopenEvent = async () => {
+    if (!eventId) return;
+    setClosingEvent(true);
+    try {
+      await base44.entities.Event.update(eventId, { status: "upcoming" });
+      setEvents((prev) => prev.map((e) => (e.id === eventId ? { ...e, status: "upcoming" } : e)));
+    } catch (e) {
+      alert("Impossibile riaprire la serata: " + (e?.message || "errore"));
+    } finally {
+      setClosingEvent(false);
+    }
+  };
+
   const totalTickets = reservations.reduce((s, r) => s + (r.quantity || 0), 0);
   const filteredRes = reservations.filter((r) => {
     const q = query.trim().toLowerCase();
@@ -324,6 +362,15 @@ export default function Scanner() {
             </div>
           ) : (
             <>
+          {isConcluded && (
+            <div className="mb-4 border-2 border-destructive bg-destructive/10 p-4 flex items-start gap-3">
+              <Lock className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold uppercase text-destructive">Serata conclusa</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Timbrature bloccate. Evento archiviato come passato. Riapri dalla colonna a destra per ammettere ingressi residui.</p>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-2 mb-4">
             <button onClick={() => { setMode("camera"); setCamStarted(false); }} className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.15em] border ${mode === "camera" ? "bg-accent text-background border-accent" : "border-border text-muted-foreground hover:text-foreground"}`}>
               <Camera className="h-4 w-4" /> Fotocamera
@@ -378,7 +425,7 @@ export default function Scanner() {
                 autoFocus
                 className="w-full bg-card border border-border px-4 py-4 text-lg font-mono uppercase tracking-wider text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent"
               />
-              <button type="submit" disabled={processing || !code} className="w-full bg-accent text-background py-4 text-sm font-bold uppercase tracking-[0.2em] hover:bg-foreground transition-colors disabled:opacity-40">
+              <button type="submit" disabled={processing || !code || isConcluded} className="w-full bg-accent text-background py-4 text-sm font-bold uppercase tracking-[0.2em] hover:bg-foreground transition-colors disabled:opacity-40">
                 {processing ? "Verifica..." : "Valida biglietto"}
               </button>
             </form>
@@ -409,8 +456,11 @@ export default function Scanner() {
                     <XCircle className="h-8 w-8 text-destructive shrink-0 mt-0.5" />
                     <div>
                       <p className="text-lg font-black uppercase text-destructive">
-                        {result.reason === "already_used" ? "Già timbrato" : result.reason === "cancelled" ? "Annullato" : result.reason === "wrong_event" ? "Evento sbagliato" : result.reason === "invalid" ? "Non valido" : "Errore"}
+                        {result.reason === "already_used" ? "Già timbrato" : result.reason === "cancelled" ? "Annullato" : result.reason === "wrong_event" ? "Evento sbagliato" : result.reason === "closed" ? "Serata conclusa" : result.reason === "invalid" ? "Non valido" : "Errore"}
                       </p>
+                      {result.reason === "closed" && (
+                        <p className="text-xs text-muted-foreground mt-1">La serata è stata conclusa e le timbrature sono bloccate.</p>
+                      )}
                       {result.ticket && (
                         <p className="text-xs text-muted-foreground mt-1">
                           {result.ticket.holder_name} · Biglietto {result.ticket.seat} · {result.ticket.code}
@@ -445,6 +495,26 @@ export default function Scanner() {
               {loadingEvents ? <option>Carico...</option> :
                 events.map((ev) => <option key={ev.id} value={ev.id}>{ev.title} — {ev.date ? new Date(ev.date).toLocaleDateString("it-IT") : ""}</option>)}
             </select>
+          </div>
+
+          <div className="border border-border p-5">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-3">Stato serata</p>
+            {isConcluded ? (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Lock className="h-4 w-4 text-destructive" />
+                  <p className="text-sm text-foreground">Serata conclusa</p>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">Timbrature bloccate, evento archiviato come passato.</p>
+                <button onClick={reopenEvent} disabled={closingEvent} className="w-full border border-border py-2.5 text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground hover:border-accent transition-colors disabled:opacity-40 flex items-center justify-center gap-2">
+                  <Unlock className="h-4 w-4" /> Riapri timbrature
+                </button>
+              </div>
+            ) : (
+              <button onClick={closeEvent} disabled={closingEvent} className="w-full bg-destructive text-destructive-foreground py-2.5 text-xs font-bold uppercase tracking-[0.15em] hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center justify-center gap-2">
+                <Lock className="h-4 w-4" /> {closingEvent ? "Attendo..." : "Chiudi serata"}
+              </button>
+            )}
           </div>
 
           <div className="border border-border p-5">
