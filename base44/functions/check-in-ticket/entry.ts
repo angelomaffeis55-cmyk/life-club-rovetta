@@ -3,7 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 export default async function(req) {
   try {
     const body = await req.json();
-    const { code } = body;
+    const { code, event_id } = body;
 
     if (!code || typeof code !== 'string') {
       return Response.json({ error: 'Codice mancante' }, { status: 400 });
@@ -21,6 +21,23 @@ export default async function(req) {
       return Response.json({ valid: false, reason: 'invalid' });
     }
     const ticket = tickets[0];
+
+    // Il biglietto deve appartenere all'evento che lo staff sta gestendo.
+    // Un biglietto valido ma di un'altra serata non dà accesso.
+    if (event_id && ticket.event_id !== event_id) {
+      return Response.json({
+        valid: false,
+        reason: 'wrong_event',
+        ticket: {
+          code: ticket.code,
+          holder_name: ticket.holder_name,
+          event_title: ticket.event_title,
+          event_date: ticket.event_date,
+          seat: ticket.seat,
+          status: ticket.status
+        }
+      });
+    }
 
     if (ticket.status === 'checked_in') {
       return Response.json({

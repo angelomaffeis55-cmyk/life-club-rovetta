@@ -93,12 +93,12 @@ export default function Scanner() {
 
   const processCode = useCallback(async (raw) => {
     const c = (raw || "").trim().toUpperCase();
-    if (!c || c === lastScanRef.current || processing) return;
+    if (!c || c === lastScanRef.current || processing || !eventId) return;
     lastScanRef.current = c;
     setProcessing(true);
     setCode(c);
     try {
-      const res = await base44.functions.invoke("check-in-ticket", { code: c });
+      const res = await base44.functions.invoke("check-in-ticket", { code: c, event_id: eventId });
       const data = res?.data || res;
       setResult(data);
       beep(!!data?.valid);
@@ -263,7 +263,7 @@ export default function Scanner() {
                     <XCircle className="h-8 w-8 text-destructive shrink-0 mt-0.5" />
                     <div>
                       <p className="text-lg font-black uppercase text-destructive">
-                        {result.reason === "already_used" ? "Già timbrato" : result.reason === "cancelled" ? "Annullato" : result.reason === "invalid" ? "Non valido" : "Errore"}
+                        {result.reason === "already_used" ? "Già timbrato" : result.reason === "cancelled" ? "Annullato" : result.reason === "wrong_event" ? "Evento sbagliato" : result.reason === "invalid" ? "Non valido" : "Errore"}
                       </p>
                       {result.ticket && (
                         <p className="text-xs text-muted-foreground mt-1">
@@ -273,6 +273,9 @@ export default function Scanner() {
                       )}
                       {result.reason === "invalid" && (
                         <p className="text-xs text-muted-foreground mt-1">Il codice non corrisponde a nessun biglietto registrato.</p>
+                      )}
+                      {result.reason === "wrong_event" && (
+                        <p className="text-xs text-muted-foreground mt-1">Biglietto valido ma di un'altra serata ({result.ticket?.event_title}). Non ammesso a questo evento.</p>
                       )}
                     </div>
                   </div>
