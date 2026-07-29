@@ -43,7 +43,8 @@ export default function Scanner() {
     try {
       const list = await base44.entities.Event.list("date", 50);
       setEvents(list || []);
-      if (list && list.length) setEventId(list[0].id);
+      const upcoming = (list || []).filter((e) => e.status !== "past");
+      setEventId((upcoming[0] || list[0])?.id || "");
     } catch (e) {
       setEvents([]);
     } finally {
@@ -66,6 +67,29 @@ export default function Scanner() {
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
   useEffect(() => { if (eventId) loadTickets(); }, [eventId, loadTickets]);
+
+  // Sincronizzazione real-time: ogni nuova prenotazione crea un Ticket,
+  // e ogni timbrata aggiorna lo stato. Lo scanner reagisce all'istante,
+  // filtrando solo i biglietti dell'evento selezionato.
+  useEffect(() => {
+    let mounted = true;
+    const applyChange = (t) => {
+      setTickets((prev) => {
+        const idx = prev.findIndex((x) => x.id === t.id);
+        if (idx === -1) return t.event_id === eventId ? [...prev, t] : prev;
+        const next = [...prev]; next[idx] = t; return next;
+      });
+    };
+    const unsubscribe = base44.entities.Ticket.subscribe((e) => {
+      if (!mounted) return;
+      if (e.type === "delete") {
+        setTickets((prev) => prev.filter((x) => x.id !== e.id));
+      } else if (e.data) {
+        applyChange(e.data);
+      }
+    });
+    return () => { mounted = false; unsubscribe(); };
+  }, [eventId]);
 
   const processCode = useCallback(async (raw) => {
     const c = (raw || "").trim().toUpperCase();
