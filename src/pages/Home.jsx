@@ -8,9 +8,19 @@ import LiquidCursor from "@/components/LiquidCursor";
 import FrequencyLine from "@/components/FrequencyLine";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import Gallery from "@/components/Gallery";
 import { ArrowDown, Zap, Music, Users } from "lucide-react";
 
 const HERO_IMG = "https://media.base44.com/images/public/6a69f1d0870cc40025a6fb1d/89498f885_generated_3a0d2045.png";
+
+const GALLERY_IMAGES = [
+  "https://media.base44.com/images/public/6a69f1d0870cc40025a6fb1d/f77451874_generated_image.png",
+  "https://media.base44.com/images/public/6a69f1d0870cc40025a6fb1d/6b4a153b4_generated_image.png",
+  "https://media.base44.com/images/public/6a69f1d0870cc40025a6fb1d/454977456_generated_image.png",
+  "https://media.base44.com/images/public/6a69f1d0870cc40025a6fb1d/1cdcd271c_generated_02074170.png",
+  "https://media.base44.com/images/public/6a69f1d0870cc40025a6fb1d/333d958a0_generated_f2979a94.png",
+  "https://media.base44.com/images/public/6a69f1d0870cc40025a6fb1d/4cc3fd27e_generated_fc3aadf6.png",
+];
 
 export default function Home() {
   const [events, setEvents] = useState([]);
@@ -163,6 +173,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* ===== GALLERIA ===== */}
+      <Gallery images={GALLERY_IMAGES} />
 
       {/* ===== CTA FINALE ===== */}
       <section className="relative py-24 md:py-40 border-t border-border overflow-hidden">

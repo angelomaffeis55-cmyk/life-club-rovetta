@@ -26,6 +26,18 @@
       "type": "number",
       "default": 1
     },
+    "unit_price": {
+      "type": "number",
+      "default": 0
+    },
+    "commission": {
+      "type": "number",
+      "default": 0
+    },
+    "total": {
+      "type": "number",
+      "default": 0
+    },
     "confirmation_code": {
       "type": "string"
     },

@@ -18,6 +18,12 @@ export default async function(req) {
 
     const code = 'LC-' + Date.now().toString(36).toUpperCase().slice(-5) + '-' + Math.random().toString(36).slice(2, 5).toUpperCase();
 
+    const unitPrice = Number(event.price) || 0;
+    const qty = Number(quantity);
+    const commissionPerTicket = unitPrice > 0 ? 1 : 0;
+    const commission = commissionPerTicket * qty;
+    const total = (unitPrice + commissionPerTicket) * qty;
+
     const reservation = await base44.asServiceRole.entities.Reservation.create({
       event_id,
       event_title: event.title,
@@ -25,7 +31,10 @@ export default async function(req) {
       full_name,
       email,
       phone: phone || '',
-      quantity: Number(quantity),
+      quantity: qty,
+      unit_price: unitPrice,
+      commission,
+      total,
       confirmation_code: code,
       status: 'confirmed'
     });
@@ -110,6 +119,37 @@ export default async function(req) {
     doc.setTextColor(212, 255, 0);
     doc.text(code, 44, 408);
 
+    // Riepilogo prezzi con commissione
+    const py = 444;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(110, 110, 110);
+    doc.text('RIEPILOGO', 44, py);
+    if (unitPrice > 0) {
+      doc.text('BIGLIETTI (' + qty + ' x EUR ' + unitPrice.toFixed(2) + ')', 44, py + 18);
+      doc.text('COMMISSIONE PREVENDITA (' + qty + ' x EUR 1.00)', 44, py + 34);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(224, 224, 224);
+      doc.text('EUR ' + (unitPrice * qty).toFixed(2), 340, py + 18, { align: 'right' });
+      doc.text('EUR ' + commission.toFixed(2), 340, py + 34, { align: 'right' });
+      doc.setDrawColor(212, 255, 0);
+      doc.setLineWidth(0.8);
+      doc.line(44, py + 44, 340, py + 44);
+      doc.setFontSize(16);
+      doc.setTextColor(212, 255, 0);
+      doc.text('TOTALE  EUR ' + total.toFixed(2), 44, py + 64);
+    } else {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(212, 255, 0);
+      doc.text('INGRESSO LIBERO', 44, py + 22);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(110, 110, 110);
+      doc.text('Nessuna commissione applicata sui biglietti gratuiti', 44, py + 40);
+    }
+
     // QR a destra
     doc.setFillColor(212, 255, 0);
     doc.roundedRect(pageW - 184, 250, 140, 140, 4, 4, 'F');
@@ -147,7 +187,11 @@ export default async function(req) {
     return Response.json({
       confirmation_code: code,
       pdf_base64: pdfBase64,
-      reservation_id: reservation.id
+      reservation_id: reservation.id,
+      total,
+      unit_price: unitPrice,
+      commission,
+      free: unitPrice === 0
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
