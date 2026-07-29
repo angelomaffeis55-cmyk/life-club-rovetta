@@ -113,31 +113,54 @@ export default function Scanner() {
     }
   }, [processing, loadTickets]);
 
-  // Camera via native BarcodeDetector
+  // Camera via native BarcodeDetector (Android Chrome) with jsQR fallback (iOS Safari)
   useEffect(() => {
     let active = true;
     let stream;
     let raf;
     if (mode !== "camera" || !camStarted) return;
-    if (!("BarcodeDetector" in window)) { setCamError(true); return; }
     (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
         if (!active) return;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
         }
-        const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+        let detector = null;
+        if ("BarcodeDetector" in window) {
+          try { detector = new window.BarcodeDetector({ formats: ["qr_code"] }); } catch (e) {}
+        }
+        let jsQR = null;
+        if (!detector) {
+          try { jsQR = (await import("jsqr")).default; } catch (e) {}
+        }
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
         const tick = async () => {
           if (!active || !videoRef.current) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            if (codes && codes.length) {
-              const v = codes[0].rawValue?.trim();
-              if (v && v.toUpperCase() !== lastScanRef.current) processCode(v);
+          const v = videoRef.current;
+          if (v.readyState >= 2 && v.videoWidth) {
+            if (detector) {
+              try {
+                const codes = await detector.detect(v);
+                if (codes && codes.length) {
+                  const val = codes[0].rawValue?.trim();
+                  if (val && val.toUpperCase() !== lastScanRef.current) processCode(val);
+                }
+              } catch (e) {}
+            } else if (jsQR) {
+              canvas.width = v.videoWidth;
+              canvas.height = v.videoHeight;
+              ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+              const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const q = jsQR(img.data, canvas.width, canvas.height);
+              if (q && q.data) {
+                const val = q.data.trim();
+                if (val.toUpperCase() !== lastScanRef.current) processCode(val);
+              }
             }
-          } catch (e) {}
+          }
           raf = requestAnimationFrame(tick);
         };
         tick();
@@ -237,8 +260,8 @@ export default function Scanner() {
               {camError && (
                 <div className="absolute inset-0 bg-background/90 flex flex-col items-center justify-center text-center px-6">
                   <Camera className="h-9 w-9 text-muted-foreground mb-3" />
-                  <p className="text-sm text-foreground mb-1">Fotocamera o scanner QR non supportati su questo dispositivo.</p>
-                  <p className="text-xs text-muted-foreground">Usa l'inserimento manuale per digitare il codice del biglietto.</p>
+                  <p className="text-sm text-foreground mb-1">Impossibile accedere alla fotocamera.</p>
+                  <p className="text-xs text-muted-foreground">Controlla i permessi della fotocamera dal browser, oppure usa l'inserimento manuale.</p>
                 </div>
               )}
             </div>
